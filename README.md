@@ -30,9 +30,6 @@ Ce projet est un TP d'analyse exploratoire de données (EDA) et de détection de
 - [Partie 4 - Approche Fraude](#partie-4---approche-fraude-sans-machine-learning)
 - [Partie 5 - Restitution et Synthèse](#partie-5---restitution-et-synthèse)
 - [Bonus - Score de Risque](#bonus---score-de-risque-et-export)
-- [Résultats et Insights](#résultats-et-insights)
-- [Limites et Améliorations](#limites-et-améliorations)
-- [Exécution](#exécution)
 
 ---
 
