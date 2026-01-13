@@ -127,6 +127,6 @@ object Bonus_Score {
     println("   • risk_scores.parquet")
     println("   • suspicious_cards.parquet")
     println("   • transactions_enriched.parquet")
-    println("\n🎓 Bon courage pour la soutenance!\n")
+
   }
 }
