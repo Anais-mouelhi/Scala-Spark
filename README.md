@@ -17,8 +17,6 @@ Ce projet est un TP d'analyse exploratoire de données (EDA) et de détection de
 
 ---
 
-
-
 # TP Scala & Spark - Analyse Exploratoire et Détection de Fraude
 
 ## 📋 Table des matières
@@ -69,34 +67,90 @@ Framework    : Apache Spark 3.5.0
 API          : DataFrame / Dataset (pas de RDD ni SQL pur)
 Build Tool   : Scala-CLI
 JVM Memory   : 8GB
+Architecture : Modulaire (7 fichiers)
 ```
+
+### Pourquoi une architecture modulaire ?
+
+Ce projet utilise une **architecture modulaire** avec un fichier par partie pour :
+- ✅ **Lisibilité** : Code découpé en modules courts et clairs
+- ✅ **Maintenance** : Modifications isolées sans impact sur le reste
+- ✅ **Réutilisabilité** : Chaque partie peut être importée et testée indépendamment
+- ✅ **Collaboration** : Plusieurs développeurs peuvent travailler en parallèle
+- ✅ **Production-ready** : Architecture professionnelle évolutive
+
+---
 
 ## 📁 Structure du Projet
 
 ```
-exoTP/
-├── src/main/scala/
-│   ├── Partie1_EDA.scala           # Chargement, volumétrie, qualité
-│   ├── Partie2_Montants.scala      # Analyse des montants et temporelle
-│   ├── Partie3_Enrichissement.scala # Jointure MCC et analyse erreurs
-│   ├── Partie4_Fraude.scala        # Indicateurs et détection suspects
-│   ├── Partie5_Synthese.scala      # Synthèse finale
-│   └── Bonus_ScoreRisque.scala     # Score de risque et export Parquet
+fraud-analysis/
+├── project.scala                    # Configuration Scala-CLI globale
+├── FraudAnalysisMain.scala          # Point d'entrée principal (orchestrateur)
+├── Partie1_Chargement.scala         # Chargement, volumétrie, qualité
+├── Partie2_Montants.scala           # Analyse des montants et temporelle
+├── Partie3_Enrichissement.scala     # Jointures MCC, cards, users + erreurs
+├── Partie4_Fraude.scala             # Indicateurs et détection suspects
+├── Partie5_Synthese.scala           # Synthèse finale (150 lignes)
+├── Bonus_Score.scala                # Score de risque et export Parquet
 │
-├── transactions_data.csv           # Transactions bancaires
-├── cards_data.csv                  # Informations sur les cartes
-├── users_data.csv                  # Informations clients
-├── mcc_codes.json                  # Mapping code MCC → catégorie
-├── train_fraud_labels.json         # Labels de fraude
+├── transactions_data.csv            # Transactions bancaires (~100k lignes)
+├── cards_data.csv                   # Informations sur les cartes (~6k lignes)
+├── users_data.csv                   # Informations clients (~2k lignes)
+├── mcc_codes.json                   # Mapping code MCC → catégorie (107 codes)
+├── train_fraud_labels.json          # Labels de fraude (optionnel)
 │
-├── output/                         # Fichiers Parquet générés (après exécution)
-│   ├── risk_scores.parquet
-│   ├── suspicious_cards.parquet
-│   └── transactions_enriched.parquet
+├── output/                          # Fichiers Parquet générés (après exécution)
+│   ├── risk_scores.parquet/
+│   ├── suspicious_cards.parquet/
+│   └── transactions_enriched.parquet/
 │
-└── README.md                       # Ce fichier
+└── README.md                        # Ce fichier
 ```
 
+### Architecture du pipeline
+
+```
+┌─────────────────────────────────────────┐
+│   FraudAnalysisMain.scala               │  ← Orchestrateur principal
+│   (Coordonne l'exécution)               │
+└─────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────┐
+│   Partie1_Chargement.scala (6.0 KB)    │  ← Chargement + EDA
+│   • CSV, JSON, stack() MCC              │
+│   • Volumétrie, qualité                 │
+└─────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────┐
+│   Partie2_Montants.scala (3.9 KB)      │  ← Analyse montants
+│   • Stats descriptives                  │
+│   • Tranches, temporel                  │
+└─────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────┐
+│   Partie3_Enrichissement.scala (7.0 KB)│  ← Enrichissement
+│   • MCC, cards, users                   │
+│   • Dark web, credit_score              │
+└─────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────┐
+│   Partie4_Fraude.scala (5.9 KB)        │  ← Détection fraude
+│   • 4 indicateurs                       │
+│   • Multi-critères                      │
+└─────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────┐
+│   Partie5_Synthese.scala (7.6 KB)      │  ← Restitution
+│   • 150 lignes de synthèse métier       │
+└─────────────────────────────────────────┘
+                ▼
+┌─────────────────────────────────────────┐
+│   Bonus_Score.scala (5.4 KB)           │  ← Score + Export
+│   • Score risque justifié               │
+│   • 3 fichiers Parquet                  │
+└─────────────────────────────────────────┘
+```
 
 ---
 
@@ -113,9 +167,6 @@ exoTP/
 | `train_fraud_labels.json` | JSON | Variable | Labels de fraude (si disponible) |
 
 ---
-
-
-
 
 ## 📖 PARTIE 1 - Prise en Main des Données
 
@@ -149,17 +200,19 @@ val transactionsDF = spark.read
 - Alternative : définir un schéma explicite, mais plus verbeux pour ce TP
 - ⚠️ **Risque** : Peut mal inférer (ex: `zip` en Double au lieu de String)
 
-#### Traitement spécial pour MCC JSON
+#### Traitement spécial pour MCC JSON (OPTIMISATION avec stack())
 
 ```scala
 val mccRawDF = spark.read
   .option("multiLine", "true")
   .json(basePath + "mcc_codes.json")
 
-// Transformation : colonnes → lignes
-val mccCodesDF = mccColumns.map { code =>
-  (code, mccRawDF.select(col(s"`$code`")).first().getString(0))
-}.toSeq.toDF("mcc_code", "mcc_category")
+// Transformation OPTIMISÉE : colonnes → lignes avec stack()
+val mccCols = mccRawDF.columns
+val stackExpr = mccCols.map(c => s"'$c', $c").mkString(", ")
+val mccCodesDF = mccRawDF.select(
+  expr(s"stack(${mccCols.length}, $stackExpr) as (mcc_code, mcc_category)")
+).withColumn("mcc_code", col("mcc_code").cast("int"))
 ```
 
 **Pourquoi cette transformation ?**
@@ -181,7 +234,10 @@ Pour faire des jointures, on a besoin d'un format tabulaire :
 | 5812 | Eating Places and Restaurants |
 | 5541 | Service Stations |
 
-**Solution** : Itérer sur les colonnes et créer des tuples `(code, description)`.
+**Solution OPTIMISÉE** : Utilisation de `stack()` au lieu d'une itération manuelle.
+- ✅ Plus performant sur gros volumes
+- ✅ Code plus concis
+- ✅ Évite les opérations collect/first
 
 ---
 
@@ -260,8 +316,6 @@ Pourquoi tester `isNull` ET `=== ""` ?
 - `=== ""` : Détecte les chaînes vides (différent de null)
 
 ---
-
-
 
 ## 📊 PARTIE 2 - Analyse des Montants & Comportements
 
@@ -386,8 +440,6 @@ val txNuit = transactionsTime.filter(col("heure") >= 0 && col("heure") < 6).coun
 ```
 
 ---
-
-
 
 ## 🔗 PARTIE 3 - Enrichissement Métier
 
@@ -1288,61 +1340,4 @@ val statsClientsNormaux = transactionsFull
 3. **Détection temps réel** (Spark Streaming)
 
 ---
-
-## 🚀 Exécution
-
-### Prérequis
-
-```bash
-# Vérifier Java
-java -version  # Java 17+ requis
-
-# Vérifier scala-cli
-scala-cli --version
-```
-
-### Commandes d'exécution
-
-```bash
-# Se placer dans le dossier du projet
-cd exoTP
-
-# Exécuter chaque partie individuellement
-scala-cli run src/main/scala/Partie1_EDA.scala
-scala-cli run src/main/scala/Partie2_Montants.scala
-scala-cli run src/main/scala/Partie3_Enrichissement.scala
-scala-cli run src/main/scala/Partie4_Fraude.scala
-scala-cli run src/main/scala/Partie5_Synthese.scala
-
-# Exécuter le bonus (score de risque + export Parquet)
-scala-cli run src/main/scala/Bonus_ScoreRisque.scala
-```
-
-### Fichiers générés (après exécution du Bonus)
-
-```
-output/
-├── risk_scores.parquet         # Scores de risque par carte/jour
-├── suspicious_cards.parquet    # Cartes suspectes avec raisons
-└── transactions_enriched.parquet # Transactions enrichies
-```
-
-### Lire les fichiers Parquet
-
-```scala
-val scores = spark.read.parquet("output/risk_scores.parquet")
-scores.filter(col("score_risque") > 50).show()
-```
-
----
-
-## 👤 Auteur
-
-**Chainez Mouelhi**
-
-📅 Janvier 2026
-
-🎓 TP Scala & Spark - Analyse de Fraude Bancaire
-
-
 
