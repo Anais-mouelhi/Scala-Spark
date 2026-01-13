@@ -1,0 +1,29 @@
+# Fichiers de données volumineux (> 100 MB)
+transactions_data.csv
+train_fraud_labels.json
+cards_data.csv
+users_data.csv
+mcc_codes.json
+*.parquet
+
+# Dossier output
+output/
+
+# Mac
+.DS_Store
+
+# Scala / Spark / Bloop / Scala-cli
+.scala-build/
+.bsp/
+.bloop/
+*.class
+*.log
+target/
+project/target/
+project/project/
+
+# IDE
+.idea/
+*.iml
+.metals/
+.vscode/
