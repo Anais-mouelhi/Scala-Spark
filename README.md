@@ -1,5 +1,19 @@
 # 🔍 TP Scala & Spark - Analyse de Fraude Bancaire
 
+## 🌿 Organisation des branches
+
+Ce repository contient plusieurs TPs BigData, chacun sur sa propre branche :
+
+| Branche | Contenu | Technologies |
+|---------|---------|--------------|
+| [`main`](https://github.com/Anais-mouelhi/Scala-Spark/tree/main) | **TP Scala & Spark** — Analyse exploratoire et détection de fraude bancaire | Scala 2.12, Spark 3.5.0, DataFrame API |
+| [`kafka-tp`](https://github.com/Anais-mouelhi/Scala-Spark/tree/kafka-tp) | **TP Kafka** — Streaming de données capteurs (producteur / consommateur) | Apache Kafka, Spark Streaming, Java |
+| [`tp-hbase`](https://github.com/Anais-mouelhi/Scala-Spark/tree/tp-hbase) | **TP HBase** — Stockage NoSQL, ImportTsv, pipeline Spark → HBase, visualisation Python | HBase 2.5.8, Spark 3.5.0, Java, Python/matplotlib |
+
+> **Navigation** : utilisez le sélecteur de branche en haut à gauche de GitHub pour passer d'un TP à l'autre.
+
+---
+
 ## 📋 Description
 
 Ce projet est un TP d'analyse exploratoire de données (EDA) et de détection de fraude bancaire utilisant **Scala** et **Apache Spark**. L'objectif est d'analyser des transactions bancaires pour identifier des comportements suspects et préparer le terrain pour un futur modèle de Machine Learning.
