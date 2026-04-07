@@ -188,6 +188,126 @@ Besoin historique  → Batch layer  : HDFS                   (analyses sur 1 an)
 
 ---
 
+---
+
+## Pour aller plus loin — Extensions implementees
+
+### 1. Visualisation (matplotlib)
+
+Le script `visualize_hbase.py` lit la table `sales` et genere 4 graphiques :
+
+```bash
+pip install matplotlib numpy
+python3 visualize_hbase.py
+```
+
+| Fichier | Description |
+|---------|-------------|
+| `chart_ca.png` | CA par categorie (barres) |
+| `chart_purchases.png` | Nombre d'achats par categorie (barres) |
+| `chart_combined.png` | CA + tendance achats (double axe Y) |
+| `chart_radar.png` | Radar chart toutes metriques (normalise) |
+
+---
+
+### 2. Detection d'anomalies
+
+Integree dans `EcommercePipeline.java` — a chaque batch, le CA courant est compare au batch precedent. Si la chute depasse **50%**, une alerte est emise :
+
+```
+!!! ANOMALIE DETECTEE - Batch 3 !!!
+!!! Categorie  : Livres
+!!! CA precedent : 3011.09 EUR
+!!! CA actuel    : 636.69 EUR
+!!! Variation    : -78.9%
+!!! ACTION : verifier la disponibilite produit !
+```
+
+Extrait du code (`EcommercePipeline.java`, methode `detectAnomaly`) :
+```java
+if (changePct < -50.0) {
+    System.out.println("!!! ANOMALIE DETECTEE - Batch " + batchId + " !!!");
+    System.out.println("!!! Categorie : " + category);
+    System.out.printf("!!! Variation : %.1f%%%n", changePct);
+}
+```
+
+---
+
+### 3. Chiffrement AES-128 des montants
+
+`AESUtil.java` chiffre le `total_amount` avant ecriture dans HBase.
+
+Dans HBase, `stats:total_amount` contient le montant chiffre en Base64 :
+```
+stats:total_amount  value=d7sXPKvLLj2jqF/eYF6VSA==   <-- chiffre AES
+stats:total_amount_plain  value=636.69               <-- clair (debug)
+```
+
+Pour dechiffrer :
+```java
+String montant = AESUtil.decrypt("d7sXPKvLLj2jqF/eYF6VSA==");
+// -> "636.69"
+```
+
+---
+
+### 4. Architecture Kappa (`KappaPipeline.java`)
+
+**Principe** : supprimer la batch layer HDFS et tout traiter via Spark.
+Kafka est la source de verite (retention longue = 30 jours).
+
+```
+Lambda  : Kafka -> Spark -> HBase  ET  Kafka -> HDFS
+Kappa   : Kafka -> Spark -> HBase (events_raw + sales)
+```
+
+| Critere | Lambda | Kappa |
+|---------|--------|-------|
+| Nombre de codebases | 2 (batch + streaming) | 1 |
+| Complexite ops | Haute | Moyenne |
+| Rejoue historique | HDFS | Kafka (retention longue) |
+| Latence batch | Haute (H+1) | Basse (streaming) |
+
+Pour lancer l'architecture Kappa :
+```bash
+# Creer la table events_raw dans HBase
+echo "create 'events_raw','data'" | hbase shell -n
+
+spark-submit --class tn.insat.tp5.KappaPipeline \
+  --master local[4] --driver-memory 512m \
+  target/ecommerce-pipeline-1-jar-with-dependencies.jar
+```
+
+---
+
+### 5. Alternative Cassandra (`CassandraSink.java`)
+
+`CassandraSink.java` montre comment remplacer HBase par Cassandra.
+
+Schema CQL equivalent :
+```sql
+CREATE KEYSPACE ecommerce WITH replication = {
+  'class': 'SimpleStrategy', 'replication_factor': 1
+};
+CREATE TABLE ecommerce.sales (
+  category       text PRIMARY KEY,
+  total_amount   double,
+  purchase_count bigint,
+  last_update    bigint
+);
+```
+
+| Critere | HBase | Cassandra |
+|---------|-------|-----------|
+| Latence ecriture | ~2-5 ms | ~1-3 ms |
+| Schema | Flexible | CQL obligatoire |
+| Integration Hadoop | Native | Independant |
+| Disponibilite | SPOF possible | Peer-to-peer, pas de SPOF |
+| Cas ideal | Cluster Hadoop existant | Haute dispo, ecriture massive |
+
+---
+
 ## Technologies
 
 - Apache Kafka 3.6.1 (2.13)
