@@ -114,6 +114,80 @@ hdfs dfs -cat /data/ecommerce/raw/part-*.json | head -5
 | `Electronique` | `stats` | `purchase_count` | Nb d'achats |
 | `Electronique` | `meta` | `last_update` | Timestamp dernière MAJ |
 
+## Questions Tech Lead
+
+### Q1 — En production avec 1 million d'événements/seconde, quelle modification apporteriez-vous ?
+
+Le pipeline actuel écrit dans HBase toutes les 30 secondes avec des `Put` individuels. À 1M events/s, plusieurs adaptations sont nécessaires :
+
+**Côté Spark :**
+- Passer de `local[4]` à un cluster YARN multi-workers (`--master yarn --num-executors 10`)
+- Augmenter le nombre de partitions Kafka et Spark (`spark.sql.shuffle.partitions=50+`)
+- Réduire le trigger à `10 seconds` pour limiter la taille des micro-batches
+
+**Côté HBase :**
+- Remplacer les `Put` unitaires par un `BufferedMutator` (écriture asynchrone en batch) pour réduire les round-trips réseau
+- Pré-splitter la table `sales` sur les row keys pour éviter les hotspots d'écriture
+- Activer la compression des colonnes (`SNAPPY`)
+
+**Côté Kafka :**
+- Augmenter les partitions du topic (ex. 12 ou 24) pour paralleliser la lecture Spark
+- Configurer la rétention des messages en cohérence avec la fenêtre de traitement
+
+**Côté infrastructure :**
+- Déployer sur un vrai cluster (10+ workers) au lieu d'un Docker local
+- Surveiller le pipeline avec Grafana + Prometheus
+
+---
+
+### Q2 — Auriez-vous pu utiliser Redis, Cassandra ou PostgreSQL à la place de HBase ?
+
+Oui, chaque technologie est techniquement possible, mais le choix dépend des contraintes du projet :
+
+| Base | Avantages | Inconvénients | Adapté ici ? |
+|------|-----------|---------------|:------------:|
+| **HBase** | Intégration native HDFS/Hadoop, scale horizontal, lecture/écriture par clé en O(1) | API verbeuse, pas de SQL, opérationnel complexe | ✅ Oui |
+| **Redis** | Latence sub-milliseconde, structures de données riches (sorted sets) | Données en mémoire uniquement (coûteux à grande échelle), pas de persistance native | ⚠️ Pour du cache, pas du stockage long terme |
+| **Cassandra** | Très haute disponibilité, pas de SPOF, bon pour les séries temporelles | Pas d'intégration Hadoop native, modèle de données rigide | ✅ Alternative sérieuse |
+| **PostgreSQL** | SQL standard, facile à interroger, écosystème riche | Ne scale pas horizontalement, écriture concurrente limitée à fort volume | ❌ Non adapté à 1M events/s |
+
+**Critères de choix :**
+1. **Volume** : HBase et Cassandra gèrent les pétaoctets ; PostgreSQL non
+2. **Intégration** : HBase s'intègre nativement avec HDFS déjà présent dans notre cluster
+3. **Accès** : lecture par catégorie (row key) = O(1) dans HBase, parfait pour notre cas
+4. **Coût** : tout est open-source sur notre cluster Hadoop existant, pas de coût additionnel
+
+---
+
+### Q3 — Comment justifier cette architecture à votre DSI en 5 minutes ?
+
+**Le problème métier :**
+> Notre plateforme e-commerce génère des milliers d'événements par seconde. Le DSI veut savoir, **en temps réel**, quel rayon génère le plus de chiffre d'affaires, et pouvoir **relancer des analyses historiques** sur 1 an de données.
+
+**L'architecture Lambda répond aux deux besoins :**
+
+```
+Besoin temps réel  → Speed layer  : Kafka + Spark + HBase  (latence < 1 min)
+Besoin historique  → Batch layer  : HDFS                   (analyses sur 1 an)
+```
+
+**Justification de chaque choix :**
+
+| Technologie | Pourquoi ce choix | Valeur métier |
+|-------------|-------------------|---------------|
+| **Kafka** | File d'attente distribuée tolérante aux pannes ; si Spark tombe, les messages sont conservés | Zéro perte d'événements même en cas de panne |
+| **Spark Structured Streaming** | Traitement en micro-batches, SQL-like, s'intègre nativement avec Kafka et HBase | Agrégation du CA par catégorie toutes les 30 s |
+| **HBase** | Lecture par clé en millisecondes même avec des milliards de lignes | Dashboard temps réel alimenté instantanément |
+| **HDFS** | Stockage distribué et pas cher (commodity hardware) | Rejouer n'importe quelle analyse batch sur 1 an d'historique |
+
+**Coût :** infrastructure open-source sur cluster interne, pas de licence.
+
+**Complexité :** pipeline en Java/Python, déployable avec `spark-submit`, monitorable avec les outils Hadoop standards.
+
+**Valeur métier :** détection immédiate d'une chute de CA (ex. catégorie Sport -50 % en 5 min), alertes automatisables, historique conservé pour le marketing et la direction.
+
+---
+
 ## Technologies
 
 - Apache Kafka 3.6.1 (2.13)
