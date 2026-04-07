@@ -9,6 +9,7 @@ Ce repository contient plusieurs TPs BigData, chacun sur sa propre branche :
 | [`main`](https://github.com/Anais-mouelhi/Scala-Spark/tree/main) | **TP Scala & Spark** — Analyse exploratoire et détection de fraude bancaire | Scala 2.12, Spark 3.5.0, DataFrame API |
 | [`kafka-tp`](https://github.com/Anais-mouelhi/Scala-Spark/tree/kafka-tp) | **TP Kafka** — Streaming de données capteurs (producteur / consommateur) | Apache Kafka, Spark Streaming, Java |
 | [`tp-hbase`](https://github.com/Anais-mouelhi/Scala-Spark/tree/tp-hbase) | **TP HBase** — Stockage NoSQL, ImportTsv, pipeline Spark → HBase, visualisation Python | HBase 2.5.8, Spark 3.5.0, Java, Python/matplotlib |
+| [`tp5-pipeline`](https://github.com/Anais-mouelhi/Scala-Spark/tree/tp5-pipeline) | **TP5 Pipeline End-to-End** — Architecture Lambda : Kafka → Spark Streaming → HBase (speed layer) + HDFS (batch layer) | Kafka 3.6.1, Spark Structured Streaming, HBase, HDFS, Java, Python |
 
 > **Navigation** : utilisez le sélecteur de branche en haut à gauche de GitHub pour passer d'un TP à l'autre.
 
